@@ -2,7 +2,7 @@
 
 A small browser tool for planning camera paths through a scene that started as a single image.
 
-1. **Lift.** An image becomes a metric point cloud with [MoGe](https://github.com/microsoft/MoGe). MoGe-3 is the default; MoGe-2 is also available.
+1. **Lift.** An image becomes a metric point cloud with [MoGe](https://github.com/microsoft/MoGe). MoGe-3 is the default; MoGe-2 is also available. Several photos of one place (cameras unknown) are reconstructed together: [VGGT](https://github.com/facebookresearch/vggt) estimates every photo's camera and field of view, MoGe lifts each photo at that field of view, and per-photo depth ratios put cameras and points in metres in the first photo's frame.
 2. **Grow.** Fly to a new viewpoint and download the point render there. Make an image for that view with any generator, then add it back. It is lifted with the viewport's field of view, placed at the viewport camera, and scale-aligned to the existing points.
 3. **Plan.** Place keyframes and edit them with a gizmo. The camera path is a centripetal Catmull–Rom spline with eased rotation interpolation, or it can face along the path. A picture-in-picture shows what the path camera sees, and frustums for the frames ahead are drawn in the scene.
 4. **Export.** The export contains per-frame OpenCV cameras and point-render guide frames (RGBA; alpha marks covered pixels), ready to condition a novel-view or video model. A merged PLY and a self-contained project file are also available.
@@ -14,6 +14,7 @@ Rendering is plain three.js, with points drawn as discs sized by each point's pi
 ```bash
 pip install -e .            # web server only
 pip install -e ".[moge]"    # + MoGe for lifting in-process (needs a GPU for interactive speed)
+pip install -e ".[moge,multiview]"   # + VGGT for multi-photo scenes (VGGT-1B weights: non-commercial licence)
 # MoGe-3 additionally needs FlexGEMM: pip install --no-build-isolation git+https://github.com/JeffreyXiang/FlexGEMM.git
 ```
 
@@ -41,8 +42,15 @@ Lifting a 1024 px image takes about 0.4 s with MoGe-2 ViT-L and 0.7 s with MoGe-
 | drag / right-drag / wheel | orbit / pan / zoom |
 | W A S D, Q E (shift: faster) | fly |
 | double-click a point | orbit around it |
+| drop files on the viewport | one image: lift · several: multi-view · `.pctool.json`: open project |
 | K | add a keyframe at the current view |
 | T / R / Esc | gizmo: move / rotate / deselect the edited keyframe |
+| Delete | delete the selected keyframe |
+| Space | play / pause the path |
+| ← / → (shift: 10), [ / ] | previous / next frame, previous / next keyframe |
+| L | look through the path camera (letterboxed to the output size) |
+| F | frame the path and the input cameras |
+| ? | show all shortcuts |
 
 ## Export format
 
@@ -72,7 +80,8 @@ Notes on the fields:
 
 ```
 pctool/lift.py      MoGe model cache and the binary lift format
-pctool/service.py   GPU service (GET /health, POST /lift)
+pctool/multiview.py VGGT cameras + per-photo MoGe points for several photos
+pctool/service.py   GPU service (GET /health, POST /lift, POST /lift_multi)
 pctool/server.py    web server: static files, export writer, in-process or proxied lifting
 pctool/web/         index.html, app.js (all client logic), style.css, vendored three.js r170 (MIT)
 ```

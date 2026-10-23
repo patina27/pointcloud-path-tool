@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Point-cloud path tool</title>
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
@@ -9,83 +10,207 @@
 </script>
 </head>
 <body>
-<div id="side">
-  <h1>Point-cloud path tool</h1>
-  <div id="status" class="muted">checking GPU service…</div>
+<aside id="side">
+  <header id="head">
+    <div class="title-row">
+      <h1>Point-cloud path tool</h1>
+      <button id="btnHelp" class="ghost icon" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+    </div>
+    <div id="status" class="pending" title="">checking GPU service…</div>
+    <div class="row project">
+      <button id="btnSave" class="ghost" title="Download everything (images, points, keyframes, settings) as one .pctool.json file">Save project</button>
+      <button id="btnLoad" class="ghost">Open project…</button>
+    </div>
+  </header>
 
-  <section>
-    <h2>1 · Lift images to points</h2>
-    <label>Model <select id="model"></select></label>
-    <label>Max side (px) <input id="maxSide" type="number" value="1024" min="256" max="2048" step="64"></label>
-    <div class="row">
-      <button id="btnFirst">First image…</button>
-      <button id="btnAdd" title="Lift an image seen from the current viewport camera (e.g. generated from a guide render there) and fuse it">Add at current view…</button>
+  <details class="step" id="step1" open>
+    <summary><span class="num">1</span><span class="step-title">Lift</span><span class="badge" id="badge1"></span></summary>
+    <div class="step-body">
+      <p class="hint">Turn one photo, or several photos of the same place, into metric 3D points. You can also drop files on the viewport.</p>
+      <div class="row">
+        <button id="btnFirst" class="primary" title="Start a new scene from one image">Open image…</button>
+        <button id="btnMulti" title="Several photos of one place (multi-view, unknown cameras): VGGT estimates the cameras, MoGe lifts each photo, all in metres">Open photos…</button>
+      </div>
+      <div class="row settings">
+        <label>Model <select id="model"></select></label>
+        <label title="Images are downscaled so their longer side is at most this many pixels before lifting">Max side <input id="maxSide" type="number" value="1024" min="256" max="2048" step="64"><span class="unit">px</span></label>
+      </div>
+      <div id="views" class="list"></div>
     </div>
-    <div class="row">
-      <button id="btnMulti" title="Several photos of one place (unknown cameras): VGGT estimates the cameras, MoGe lifts each photo, all in metres">Photos (multi-view)…</button>
-    </div>
-    <label class="check"><input id="autoAlign" type="checkbox" checked> auto-align scale to existing points</label>
-    <div class="row">
-      <button id="btnGuide" title="Download the point render (RGBA, alpha = covered) at the current view">Guide PNG at view</button>
-    </div>
-    <div id="views"></div>
-  </section>
+  </details>
 
-  <section>
-    <h2>2 · Viewport</h2>
-    <label>Field of view (vertical °) <input id="fov" type="range" min="20" max="110" value="50"><span id="fovVal"></span></label>
-    <label>Point size <input id="pointSize" type="range" min="0.5" max="4" step="0.1" value="1.6"><span id="pointSizeVal"></span></label>
-    <label class="check"><input id="showFrusta" type="checkbox" checked> show input cameras</label>
-    <p class="muted">Drag: orbit · right-drag: pan · wheel: zoom · WASD/QE: fly (shift: fast) · double-click a point: orbit around it</p>
-  </section>
+  <details class="step" id="step2" open>
+    <summary><span class="num">2</span><span class="step-title">Grow</span><span class="badge" id="badge2"></span></summary>
+    <div class="step-body">
+      <p class="hint locked-hint">Lift an image first.</p>
+      <ol class="recipe">
+        <li>Fly to a view the points don't cover yet.</li>
+        <li><button id="btnGuide" title="Download the point render (RGBA, alpha = covered) at the current view">Save guide render</button>
+          <span class="sub" id="guideSize">1280×720 PNG, transparent where there are no points</span></li>
+        <li>Generate an image for that view with any image model, using the guide.</li>
+        <li><button id="btnAdd" class="primary" title="Lift an image seen from the current viewport camera (e.g. generated from a guide render there) and fuse it">Add image at this view…</button>
+          <span class="sub">Lifted with the viewport's field of view and placed at the viewport camera.</span></li>
+      </ol>
+      <div id="guideNote" class="note" hidden>
+        <span>The camera moved since you saved the guide.</span>
+        <button id="btnGuideReturn" class="ghost small">Return to guide view</button>
+      </div>
+      <label class="check"><input id="autoAlign" type="checkbox" checked> Scale-align new images to the existing points</label>
+    </div>
+  </details>
 
-  <section>
-    <h2>3 · Camera path</h2>
-    <div class="row">
-      <button id="btnKey">Add keyframe (current view)</button>
-      <button id="btnClearPath">Clear</button>
+  <details class="step" id="step3" open>
+    <summary><span class="num">3</span><span class="step-title">Plan the path</span><span class="badge" id="badge3"></span></summary>
+    <div class="step-body">
+      <p class="hint locked-hint">Lift an image first.</p>
+      <p class="hint">Fly to a view and add it as a keyframe (<kbd>K</kbd>). Select a keyframe to move or rotate it with the gizmo.</p>
+      <div class="row">
+        <button id="btnKey" class="primary">Add keyframe here</button>
+        <button id="btnFrameAll" class="ghost" title="Move the viewport back until the whole path and the input cameras are in view (F)">Frame path</button>
+        <button id="btnClearPath" class="ghost danger">Clear path</button>
+      </div>
+      <div id="keys" class="list"></div>
+      <div class="opts">
+        <label class="check"><input id="faceForward" type="checkbox"> Face along the path (ignore keyframe rotations)</label>
+        <label title="How many upcoming frames to draw as frustums in the scene">Frustums ahead <input id="ahead" type="number" value="48" min="0" max="500"><span class="unit">frames</span></label>
+      </div>
     </div>
-    <label class="check"><input id="faceForward" type="checkbox"> face along the path (ignore keyframe rotations)</label>
-    <label>Frames <input id="frames" type="number" value="120" min="2" max="2000"></label>
-    <label>FPS <input id="fps" type="number" value="24" min="1" max="60"></label>
-    <div id="keys"></div>
-    <p class="muted">Select a keyframe to edit it with the gizmo (T: move, R: rotate, Esc: deselect).</p>
-  </section>
+  </details>
 
-  <section>
-    <h2>4 · Preview &amp; export</h2>
-    <div class="row">
-      <button id="btnPlay">▶ Play</button>
-      <label class="check"><input id="lookThrough" type="checkbox"> look through path camera</label>
+  <details class="step" id="step4" open>
+    <summary><span class="num">4</span><span class="step-title">Export</span><span class="badge" id="badge4"></span></summary>
+    <div class="step-body">
+      <p class="hint" id="exportHint">Add a keyframe in step 3 to export a path.</p>
+      <div class="row size">
+        <label>Size <input id="outW" type="number" value="1280" min="64" max="4096" aria-label="Width"></label>
+        <span class="times">×</span>
+        <label><input id="outH" type="number" value="720" min="64" max="4096" aria-label="Height"></label>
+        <button id="btnMatchAspect" class="ghost small" title="Use the first input image's aspect ratio">Match input</button>
+      </div>
+      <label>Name <input id="exportName" value="path01" spellcheck="false"></label>
+      <div id="nameError" class="field-error" hidden>Use letters, digits, dot, underscore or dash.</div>
+      <div class="row">
+        <button id="btnExport" class="primary" title="Writes cameras.json (OpenCV c2w + K), inputs/ and guide/ point renders to exports/&lt;name&gt; on the server">Export to server</button>
+        <button id="btnCams" class="ghost" title="Download cameras.json only">cameras.json</button>
+        <button id="btnPly" class="ghost" title="Download all visible points as one PLY (OpenCV world = first input camera)">Merged PLY</button>
+      </div>
+      <div id="exportProgress" class="progress" hidden><i></i></div>
+      <div id="exportStatus" class="status-line"></div>
     </div>
-    <label>Frame <input id="frame" type="range" min="0" max="119" value="0"><span id="frameVal"></span></label>
-    <label>Path ahead (frames) <input id="ahead" type="number" value="48" min="0" max="500"></label>
-    <div class="row">
-      <label>W <input id="outW" type="number" value="1280" min="64" max="4096"></label>
-      <label>H <input id="outH" type="number" value="720" min="64" max="4096"></label>
-    </div>
-    <label>Export name <input id="exportName" value="path01"></label>
-    <div class="row">
-      <button id="btnExport" title="Writes cameras.json (OpenCV c2w + K), inputs/ and guide/ point renders to exports/&lt;name&gt; on the server">Export to server</button>
-      <button id="btnCams">cameras.json</button>
-      <button id="btnPly">Merged PLY</button>
-    </div>
-    <div class="row">
-      <button id="btnSave">Save project</button>
-      <button id="btnLoad">Load project…</button>
-    </div>
-    <div id="exportStatus" class="muted"></div>
-  </section>
+  </details>
+
   <input id="fileFirst" type="file" accept="image/*" hidden>
   <input id="fileAdd" type="file" accept="image/*" hidden>
   <input id="fileMulti" type="file" accept="image/*" multiple hidden>
   <input id="fileProject" type="file" accept=".json,application/json" hidden>
+</aside>
+
+<main id="main">
+  <div id="stage">
+    <canvas id="canvas"></canvas>
+    <div id="labels" aria-hidden="true"></div>
+
+    <div id="hud">
+      <label title="Vertical field of view of the viewport camera">FOV <input id="fov" type="range" min="20" max="110" value="50"><span id="fovVal" class="val"></span></label>
+      <label>Points <input id="pointSize" type="range" min="0.5" max="4" step="0.1" value="1.6"><span id="pointSizeVal" class="val"></span></label>
+      <label class="check" title="Show the input photos' cameras and their numbers"><input id="showFrusta" type="checkbox" checked> Cameras</label>
+    </div>
+
+    <div id="activity" hidden>
+      <span class="spin" aria-hidden="true"></span>
+      <div class="act-body">
+        <div class="act-label"></div>
+        <div class="act-detail"></div>
+        <div class="progress"><i></i></div>
+      </div>
+      <span class="act-time"></span>
+      <button class="act-retry ghost small" hidden>Retry</button>
+      <button class="act-close ghost icon" title="Dismiss" aria-label="Dismiss">✕</button>
+    </div>
+
+    <div id="toast" role="status"></div>
+
+    <div id="pip" hidden title="Path camera. Click to look through it (L).">
+      <div id="pipLabel">path camera</div>
+    </div>
+    <div id="safeFrame" hidden><div id="safeLabel"></div></div>
+
+    <div id="empty">
+      <div class="empty-card">
+        <h2>Start with a photo</h2>
+        <p class="lede">Lift it into metric 3D points, grow the scene with generated views, fly a camera path through it, and export the cameras with point-render guide frames.</p>
+        <div id="dropZone" class="drop">
+          <div class="drop-title">Drop an image here</div>
+          <div class="drop-sub">or several photos of the same place to reconstruct them together</div>
+          <div class="row center">
+            <button id="emptyFirst" class="primary">Open image…</button>
+            <button id="emptyMulti">Open photos…</button>
+            <button id="emptyLoad" class="ghost">Open project…</button>
+          </div>
+        </div>
+        <div id="emptyError" class="note err" hidden></div>
+        <ol class="steps">
+          <li><b>Lift</b><span>Image to metric points (MoGe). Several photos also get cameras (VGGT).</span></li>
+          <li><b>Grow</b><span>Fly somewhere new, save a guide render, generate an image there, add it back.</span></li>
+          <li><b>Plan</b><span>Keyframes make a smooth camera path. Preview it in the inset or look through it.</span></li>
+          <li><b>Export</b><span>OpenCV cameras and guide frames to the server, a merged PLY, or a project file.</span></li>
+        </ol>
+      </div>
+    </div>
+
+    <div id="dropOverlay" hidden>
+      <div class="zone" data-zone="new"><b>New scene</b><span class="zone-sub"></span></div>
+      <div class="zone" data-zone="add"><b>Add at this view</b><span class="zone-sub">Lift with the viewport camera and align to the points</span></div>
+    </div>
+
+    <button id="hintKeys" class="ghost small" title="Keyboard shortcuts">? Shortcuts</button>
+  </div>
+
+  <div id="timeline" class="empty">
+    <button id="btnPlay" class="icon play" title="Play / pause (Space)" aria-label="Play">▶</button>
+    <div id="scrub">
+      <div id="ticks"></div>
+      <input id="frame" type="range" min="0" max="119" value="0" aria-label="Frame">
+      <div id="tlEmpty">Add keyframes to build a path: fly to a view and press <kbd>K</kbd></div>
+    </div>
+    <div class="readout" title="Frame / last frame, and time">
+      <span><span class="dim">frame </span><span id="frameVal">0</span><span class="dim"> / <span id="frameMax">119</span></span></span>
+      <span id="timeVal">0.00 s</span>
+    </div>
+    <label title="Number of path frames">Frames <input id="frames" type="number" value="120" min="2" max="2000"></label>
+    <label>FPS <input id="fps" type="number" value="24" min="1" max="60"></label>
+    <label class="check toggle" title="Show the scene through the path camera (L)"><input id="lookThrough" type="checkbox"> Look through</label>
+  </div>
+</main>
+
+<div id="help" hidden>
+  <div class="help-card" role="dialog" aria-labelledby="helpTitle">
+    <div class="title-row"><h2 id="helpTitle">Keyboard and mouse</h2><button id="helpClose" class="ghost icon" aria-label="Close">✕</button></div>
+    <div class="help-cols">
+      <dl>
+        <dt>Drag</dt><dd>Orbit</dd>
+        <dt>Right-drag</dt><dd>Pan</dd>
+        <dt>Wheel</dt><dd>Zoom</dd>
+        <dt>Double-click a point</dt><dd>Orbit around it</dd>
+        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Q</kbd><kbd>E</kbd></dt><dd>Fly (hold <kbd>Shift</kbd> for faster)</dd>
+        <dt>Drop files</dt><dd>One image: lift · several: multi-view · .json: open project</dd>
+      </dl>
+      <dl>
+        <dt><kbd>K</kbd></dt><dd>Add a keyframe at the current view</dd>
+        <dt><kbd>T</kbd> / <kbd>R</kbd></dt><dd>Gizmo: move / rotate the selected keyframe</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Deselect keyframe, close dialogs</dd>
+        <dt><kbd>Delete</kbd></dt><dd>Delete the selected keyframe</dd>
+        <dt><kbd>Space</kbd></dt><dd>Play / pause the path</dd>
+        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous / next frame (<kbd>Shift</kbd>: 10)</dd>
+        <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Previous / next keyframe</dd>
+        <dt><kbd>L</kbd></dt><dd>Look through the path camera</dd>
+        <dt><kbd>F</kbd></dt><dd>Frame the path and the input cameras</dd>
+        <dt><kbd>?</kbd></dt><dd>This overlay</dd>
+      </dl>
+    </div>
+  </div>
 </div>
-<div id="main">
-  <canvas id="canvas"></canvas>
-  <div id="pipLabel">path camera</div>
-  <div id="toast"></div>
-</div>
+
 <script type="module" src="app.js"></script>
 </body>
 </html>
