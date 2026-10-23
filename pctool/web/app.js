@@ -197,8 +197,47 @@ function alignScale(view) {
   return { scale: ratios[ratios.length >> 1], support: ratios.length };
 }
 
+const fileToDataURL = (file) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
+
+function clearViews() {
+  for (const v of [...views]) { scene.remove(v.object); scene.remove(v.frustum); disposeTree(v.object); disposeTree(v.frustum); }
+  views.length = 0;
+}
+
+// Several photos with unknown cameras: the service estimates cameras (VGGT) and lifts each photo (MoGe); each blob's
+// header carries its OpenCV c2w (world = first photo's camera, metres) and the scale for its points.
+async function addMultiView(files) {
+  const form = new FormData();
+  for (const f of files) form.append("images", f);
+  form.append("model", $("model").value);
+  form.append("max_side", $("maxSide").value);
+  toast(`reconstructing ${files.length} photos (cameras + points)…`, 600000);
+  const t0 = performance.now();
+  const r = await fetch("api/lift_multi", { method: "POST", body: form });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  const buf = await r.arrayBuffer(), dv = new DataView(buf);
+  const n = dv.getUint32(0, true);
+  clearViews();
+  let o = 4;
+  for (let i = 0; i < n; i++) {
+    const len = dv.getUint32(o, true);
+    const lifted = parseLift(buf.slice(o + 4, o + 4 + len));
+    o += 4 + len;
+    const cv = new THREE.Matrix4().set(...lifted.header.c2w.flat());
+    const view = { name: files[i].name, dataURL: await fileToDataURL(files[i]), ...lifted, scale: lifted.header.scale,
+                   visible: true, id: viewCounter++, c2w: new THREE.Matrix4().copy(FLIP).multiply(cv).multiply(FLIP) };
+    buildViewObject(view);
+    views.push(view);
+  }
+  views.forEach(updateViewMatrix);
+  resetViewToInput(views[0]);
+  renderViewList();
+  const pts = views.reduce((a, v) => a + v.header.count, 0);
+  toast(`${n} photos → ${(pts / 1e6).toFixed(1)}M points in ${((performance.now() - t0) / 1000).toFixed(1)} s · per-photo scale ${views.map((v) => v.scale.toFixed(2)).join(", ")}`, 8000);
+}
+
 async function addView(file, placeAtViewport) {
-  const dataURL = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
+  const dataURL = await fileToDataURL(file);
   const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataURL; });
   const aspect = img.width / img.height;
   const fovX = placeAtViewport ? hfovOf(camera.fov, aspect) : null;
@@ -562,8 +601,7 @@ function saveProject() {
 
 async function loadProject(file) {
   const p = JSON.parse(await file.text());
-  for (const v of [...views]) { scene.remove(v.object); scene.remove(v.frustum); disposeTree(v.object); disposeTree(v.frustum); }
-  views.length = 0; keys.length = 0;
+  clearViews(); keys.length = 0;
   for (const s of p.views) {
     const v = { name: s.name, dataURL: s.dataURL, header: s.header, scale: s.scale, visible: s.visible, id: viewCounter++,
       index: new Uint32Array(b64.dec(s.index)), points: new Float32Array(b64.dec(s.points)), colors: new Uint8Array(b64.dec(s.colors)),
@@ -589,11 +627,16 @@ $("pointSize").oninput = () => { uniforms.sizeScale.value = +$("pointSize").valu
 $("showFrusta").onchange = () => views.forEach(updateViewMatrix);
 $("btnFirst").onclick = () => $("fileFirst").click();
 $("btnAdd").onclick = () => { if (!views.length) return toast("lift a first image first"); $("fileAdd").click(); };
+$("btnMulti").onclick = () => $("fileMulti").click();
+$("fileMulti").onchange = async (e) => {
+  const files = [...e.target.files]; e.target.value = "";
+  if (files.length < 2) return toast("choose at least 2 photos of the same place");
+  try { await addMultiView(files); } catch (err) { toast(`reconstruction failed: ${err.message}`, 8000); }
+};
 $("fileFirst").onchange = async (e) => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
-  for (const v of [...views]) { scene.remove(v.object); scene.remove(v.frustum); disposeTree(v.object); disposeTree(v.frustum); }
-  views.length = 0;
+  clearViews();
   try { await addView(f, false); } catch (err) { toast(`lift failed: ${err.message}`, 8000); }
 };
 $("fileAdd").onchange = async (e) => {

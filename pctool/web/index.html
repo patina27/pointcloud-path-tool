@@ -21,6 +21,9 @@
       <button id="btnFirst">First image…</button>
       <button id="btnAdd" title="Lift an image seen from the current viewport camera (e.g. generated from a guide render there) and fuse it">Add at current view…</button>
     </div>
+    <div class="row">
+      <button id="btnMulti" title="Several photos of one place (unknown cameras): VGGT estimates the cameras, MoGe lifts each photo, all in metres">Photos (multi-view)…</button>
+    </div>
     <label class="check"><input id="autoAlign" type="checkbox" checked> auto-align scale to existing points</label>
     <div class="row">
       <button id="btnGuide" title="Download the point render (RGBA, alpha = covered) at the current view">Guide PNG at view</button>
@@ -75,6 +78,7 @@
   </section>
   <input id="fileFirst" type="file" accept="image/*" hidden>
   <input id="fileAdd" type="file" accept="image/*" hidden>
+  <input id="fileMulti" type="file" accept="image/*" multiple hidden>
   <input id="fileProject" type="file" accept=".json,application/json" hidden>
 </div>
 <div id="main">

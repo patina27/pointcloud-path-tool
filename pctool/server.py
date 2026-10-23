@@ -34,11 +34,13 @@ def create_app(backend: str | None, exports: Path) -> FastAPI:
             except httpx.HTTPError as error:
                 return JSONResponse({"ok": False, "detail": f"lift service unreachable: {error!r}"}, status_code=503)
 
-        @app.post("/api/lift")
-        async def lift(request: Request):
+        @app.post("/api/{endpoint}")
+        async def lift(endpoint: str, request: Request):
+            if endpoint not in ("lift", "lift_multi"):
+                return JSONResponse({"detail": "not found"}, status_code=404)
             try:
-                async with httpx.AsyncClient(timeout=600) as client:
-                    r = await client.post(f"{backend}/lift", content=await request.body(),
+                async with httpx.AsyncClient(timeout=1200) as client:
+                    r = await client.post(f"{backend}/{endpoint}", content=await request.body(),
                                           headers={"content-type": request.headers["content-type"]})
             except httpx.HTTPError as error:
                 return JSONResponse({"detail": f"lift service unreachable: {error!r}"}, status_code=503)

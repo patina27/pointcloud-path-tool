@@ -1,7 +1,8 @@
 """GPU lift service: run this where MoGe and a GPU are, and point `pctool-server --backend` at it.
 
     pctool-service --host 127.0.0.1 --port 23190
-GET /health, POST /lift (multipart: image; form: model, fov_x, max_side) -> see pctool.lift.
+GET /health, POST /lift (multipart: image; form: model, fov_x, max_side) -> see pctool.lift;
+POST /lift_multi (multipart: images (2+); form: model, max_side) -> see pctool.multiview.
 """
 import argparse
 
@@ -9,6 +10,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 from pctool import lift as lifting
+from pctool import multiview
 
 app = FastAPI(title="pctool lift service")
 
@@ -25,6 +27,21 @@ def lift(image: UploadFile = File(...), model: str = Form(lifting.DEFAULT_MODEL)
 
     try:
         body = lifting.lift(image.file.read(), model, fov_x, max_side)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except torch.cuda.OutOfMemoryError as error:
+        torch.cuda.empty_cache()
+        return JSONResponse({"detail": f"CUDA out of memory: {error}"}, status_code=503)
+    return Response(body, media_type="application/octet-stream")
+
+
+@app.post("/lift_multi")
+def lift_multi(images: list[UploadFile] = File(...), model: str = Form(lifting.DEFAULT_MODEL),
+               max_side: int = Form(1024)):
+    import torch
+
+    try:
+        body = multiview.reconstruct([f.file.read() for f in images], model, max_side)
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
     except torch.cuda.OutOfMemoryError as error:
