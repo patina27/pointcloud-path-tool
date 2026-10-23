@@ -1,0 +1,26 @@
+[project]
+name = "pctool"
+version = "0.1.0"
+description = "Lift images to metric point clouds (MoGe), fuse views, draw camera paths in three.js, export cameras and point-render guides"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["fastapi>=0.110", "uvicorn>=0.27", "httpx>=0.27", "python-multipart>=0.0.9", "numpy", "pillow"]
+
+[project.optional-dependencies]
+# In-process lifting / the GPU service. MoGe-3 also needs FlexGEMM (CUDA extension):
+#   pip install --no-build-isolation git+https://github.com/JeffreyXiang/FlexGEMM.git
+moge = ["torch>=2.4", "moge @ git+https://github.com/microsoft/MoGe.git"]
+
+[project.scripts]
+pctool-server = "pctool.server:main"
+pctool-service = "pctool.service:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["pctool"]
+
+[tool.setuptools.package-data]
+pctool = ["web/*.html", "web/*.js", "web/*.css", "web/vendor/*.js"]

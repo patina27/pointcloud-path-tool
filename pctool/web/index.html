@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Point-cloud path tool</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/" } }
+</script>
+</head>
+<body>
+<div id="side">
+  <h1>Point-cloud path tool</h1>
+  <div id="status" class="muted">checking GPU service…</div>
+
+  <section>
+    <h2>1 · Lift images to points</h2>
+    <label>Model <select id="model"></select></label>
+    <label>Max side (px) <input id="maxSide" type="number" value="1024" min="256" max="2048" step="64"></label>
+    <div class="row">
+      <button id="btnFirst">First image…</button>
+      <button id="btnAdd" title="Lift an image seen from the current viewport camera (e.g. generated from a guide render there) and fuse it">Add at current view…</button>
+    </div>
+    <label class="check"><input id="autoAlign" type="checkbox" checked> auto-align scale to existing points</label>
+    <div class="row">
+      <button id="btnGuide" title="Download the point render (RGBA, alpha = covered) at the current view">Guide PNG at view</button>
+    </div>
+    <div id="views"></div>
+  </section>
+
+  <section>
+    <h2>2 · Viewport</h2>
+    <label>Field of view (vertical °) <input id="fov" type="range" min="20" max="110" value="50"><span id="fovVal"></span></label>
+    <label>Point size <input id="pointSize" type="range" min="0.5" max="4" step="0.1" value="1.6"><span id="pointSizeVal"></span></label>
+    <label class="check"><input id="showFrusta" type="checkbox" checked> show input cameras</label>
+    <p class="muted">Drag: orbit · right-drag: pan · wheel: zoom · WASD/QE: fly (shift: fast) · double-click a point: orbit around it</p>
+  </section>
+
+  <section>
+    <h2>3 · Camera path</h2>
+    <div class="row">
+      <button id="btnKey">Add keyframe (current view)</button>
+      <button id="btnClearPath">Clear</button>
+    </div>
+    <label class="check"><input id="faceForward" type="checkbox"> face along the path (ignore keyframe rotations)</label>
+    <label>Frames <input id="frames" type="number" value="120" min="2" max="2000"></label>
+    <label>FPS <input id="fps" type="number" value="24" min="1" max="60"></label>
+    <div id="keys"></div>
+    <p class="muted">Select a keyframe to edit it with the gizmo (T: move, R: rotate, Esc: deselect).</p>
+  </section>
+
+  <section>
+    <h2>4 · Preview &amp; export</h2>
+    <div class="row">
+      <button id="btnPlay">▶ Play</button>
+      <label class="check"><input id="lookThrough" type="checkbox"> look through path camera</label>
+    </div>
+    <label>Frame <input id="frame" type="range" min="0" max="119" value="0"><span id="frameVal"></span></label>
+    <label>Path ahead (frames) <input id="ahead" type="number" value="48" min="0" max="500"></label>
+    <div class="row">
+      <label>W <input id="outW" type="number" value="1280" min="64" max="4096"></label>
+      <label>H <input id="outH" type="number" value="720" min="64" max="4096"></label>
+    </div>
+    <label>Export name <input id="exportName" value="path01"></label>
+    <div class="row">
+      <button id="btnExport" title="Writes cameras.json (OpenCV c2w + K), inputs/ and guide/ point renders to exports/&lt;name&gt; on the server">Export to server</button>
+      <button id="btnCams">cameras.json</button>
+      <button id="btnPly">Merged PLY</button>
+    </div>
+    <div class="row">
+      <button id="btnSave">Save project</button>
+      <button id="btnLoad">Load project…</button>
+    </div>
+    <div id="exportStatus" class="muted"></div>
+  </section>
+  <input id="fileFirst" type="file" accept="image/*" hidden>
+  <input id="fileAdd" type="file" accept="image/*" hidden>
+  <input id="fileProject" type="file" accept=".json,application/json" hidden>
+</div>
+<div id="main">
+  <canvas id="canvas"></canvas>
+  <div id="pipLabel">path camera</div>
+  <div id="toast"></div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
